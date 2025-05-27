@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vite + TS</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <canvas id="canvas" width="800px" height="800px"></canvas>
+    <script type="module" src="/src/main.ts"></script>
+    <script type="module">
+      import {Morph, CornerRounding, RoundedPolygon, Cubic} from "./src/shape";
+
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+
+      const rectangle = RoundedPolygon.fromNumVertices(6, 250, canvas.width / 2, canvas.height / 2, new CornerRounding(20));
+      const circle = RoundedPolygon.circle(6, 250, canvas.width / 2, canvas.height / 2);
+      const star = RoundedPolygon.star(6, 250, 125, new CornerRounding(20), null, null, canvas.width / 2, canvas.height / 2);
+
+      const morph = new Morph(rectangle, star);
+
+      class SpringMorphController {
+        constructor(ctx, morph, cubicsToPath) {
+          this.ctx = ctx;
+          this.morph = morph;
+          this.cubicsToPath = cubicsToPath;
+
+          this.stiffness = 0.2;
+          this.damping = 0.4;
+          this.mass = 1;
+          this.target = 0;
+          this.position = 0;
+          this.velocity = 0;
+          this.lastTime = 0;
+          this.animationId = 0;
+          this.setupEventListeners();
+        }
+
+      setupEventListeners() {
+        // Mouse events
+        const canvas = this.ctx.canvas;
+        canvas.addEventListener('mousedown', () => this.setTarget(1));
+        canvas.addEventListener('mouseup', () => this.setTarget(0));
+        canvas.addEventListener('mouseleave', () => this.setTarget(0));
+
+        // Touch events
+        canvas.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          this.setTarget(1);
+        });
+        canvas.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          this.setTarget(0);
+        });
+      }
+
+      setTarget(value) {
+        this.target = value;
+        if (!this.animationId) {
+          this.lastTime = performance.now();
+          this.animationId = requestAnimationFrame(this.animate.bind(this));
+        }
+      }
+
+      animate(timestamp) {
+        const deltaTime = (timestamp - this.lastTime) / 1000;
+        this.lastTime = timestamp;
+
+        // Spring physics calculation
+        const force = -this.stiffness * (this.position - this.target);
+        const dampingForce = -this.damping * this.velocity;
+        const acceleration = (force + dampingForce) / this.mass;
+        this.velocity += acceleration * deltaTime * 60;
+        this.position += this.velocity * deltaTime * 60;
+
+        // Clear and draw
+        this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
+        const path = this.cubicsToPath(this.morph.asCubics(this.position));
+
+        this.ctx.fillStyle = '#80DEEA';
+        this.ctx.fill(path);
+
+
+        // Continue animation if not settled
+        if (Math.abs(this.position - this.target) > 0.001 || Math.abs(this.velocity) > 0.001) {
+          this.animationId = requestAnimationFrame(this.animate.bind(this));
+        } else {
+          this.animationId = 0;
+        }
+      }
+
+      stop() {
+        if (this.animationId) {
+          cancelAnimationFrame(this.animationId);
+          this.animationId = 0;
+        }
+      }
+      }
+
+      function cubicsToPath(cubics) {
+        const path = new Path2D();
+        if (cubics.length === 0) return path;
+
+        // Start at first anchor point
+        path.moveTo(cubics[0].anchor0X, cubics[0].anchor0Y);
+
+        // Connect all subsequent curves
+        for (const cubic of cubics) {
+          path.bezierCurveTo(
+                  cubic.control0X, cubic.control0Y,
+                  cubic.control1X, cubic.control1Y,
+                  cubic.anchor1X, cubic.anchor1Y
+          );
+        }
+
+        return path;
+      }
+
+      const controller = new SpringMorphController(ctx, morph, cubicsToPath);
+    </script>
+  </body>
+</html>
